@@ -35,9 +35,12 @@
   </div>
   <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
-    import { getAuth, signOut } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
+    import { getAuth, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
+    import { getFirestore, collection, getDocs } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
     const firebaseConfig = { apiKey:"AIzaSyA3d0eKL3MLrBpWwOrTnGa7Q_d3sS3NLgY", authDomain:"privea-9590b.firebaseapp.com", projectId:"privea-9590b", storageBucket:"privea-9590b.firebasestorage.app", messagingSenderId:"323622628642", appId:"1:323622628642:web:5c08dbef11438b522b097b" };
-    const auth = getAuth(initializeApp(firebaseConfig));
+    const firebaseApp = initializeApp(firebaseConfig);
+    const auth = getAuth(firebaseApp);
+    const db = getFirestore(firebaseApp);
     const session = JSON.parse(localStorage.getItem('privea-session') || 'null');
     if (!session || session.expiresAt <= Date.now()) {
       localStorage.removeItem('privea-session');
@@ -53,7 +56,7 @@
     document.querySelectorAll('.switch').forEach(button => button.addEventListener('click', () => { button.classList.toggle('on'); button.setAttribute('aria-label', button.classList.contains('on') ? 'Bildirim açık' : 'Bildirim kapalı'); }));
     document.querySelector('#start-case-session').addEventListener('click', () => { const token = crypto.randomUUID(); sessionStorage.setItem(`privea-case-session:${token}`, JSON.stringify({ owner: user.email || 'signed-in-user', expiresAt: Date.now() + 20 * 60 * 1000 })); sessionStorage.setItem('privea-active-case-token', token); window.location.href = `vaka-oturumu.html#${token}`; });
     function escapeHtml(value) { const node = document.createElement('div'); node.textContent = value || ''; return node.innerHTML; }
-    function renderCases() { const list = document.querySelector('#case-list'); const cases = JSON.parse(localStorage.getItem('privea-cases') || '[]').filter(item => item.owner === user.email); if (!cases.length) return; list.innerHTML = '<h2>Vakalar</h2>' + cases.slice().reverse().map(item => { const reviewing = item.status === 'İnceleniyor'; return `<article class="case-row"><div class="case-meta"><b>${escapeHtml(item.type)}</b><span class="case-id">${escapeHtml(item.id)}</span><small>Başvuru tarihi: ${escapeHtml(item.date)}</small></div><div class="case-actions"><span class="badge${reviewing ? ' reviewing' : ''}">${escapeHtml(item.status || 'Alındı')}</span><a class="case-link" href="vaka-detay.html?id=${encodeURIComponent(item.id)}">Detayı aç</a></div></article>`; }).join(''); } renderCases();
+    async function renderCases() { const list = document.querySelector('#case-list'); const currentUser = auth.currentUser; if (!currentUser) return; try { const snapshot = await getDocs(collection(db, 'users', currentUser.uid, 'cases')); const cases = snapshot.docs.map(entry => entry.data()).sort((a,b) => (b.submittedAt || '').localeCompare(a.submittedAt || '')); if (!cases.length) return; list.innerHTML = '<h2>Vakalar</h2>' + cases.map(item => { const reviewing = item.status === 'İnceleniyor'; return `<article class="case-row"><div class="case-meta"><b>${escapeHtml(item.type)}</b><span class="case-id">${escapeHtml(item.id)}</span><small>Başvuru tarihi: ${escapeHtml(item.date)}</small></div><div class="case-actions"><span class="badge${reviewing ? ' reviewing' : ''}">${escapeHtml(item.status || 'Alındı')}</span><a class="case-link" href="vaka-detay.html?id=${encodeURIComponent(item.id)}">Detayı aç</a></div></article>`; }).join(''); } catch (error) { console.error('Vakalar yüklenemedi:', error); list.innerHTML = '<div class="empty"><i>⚠️</i><h2>Vakalar yüklenemedi.</h2><p>Bağlantınızı veya Firebase ayarlarını kontrol edin.</p></div>'; } } onAuthStateChanged(auth, () => renderCases());
     const remainingTime = Math.max(0, expiresAt - Date.now());
     setTimeout(async () => { localStorage.removeItem('privea-session'); await signOut(auth); window.location.replace('giris.html'); }, remainingTime);
     document.querySelectorAll('[data-logout]').forEach(button => button.addEventListener('click', async () => { localStorage.removeItem('privea-session'); await signOut(auth); window.location.href = 'giris.html'; }));
